@@ -1,13 +1,19 @@
+// src/main.js
 import Phaser from "phaser";
 import { TitleScene } from "./game/scenes/TitleScene";
-import { MenuScene } from "./game/scenes/MenuScene";
+import { StageSelectScene } from "./game/scenes/StageSelectScene";
 import { GameScene } from "./game/scenes/GameScene";
-import { ClearScene } from "./game/scenes/ClearScene";
 
-new Phaser.Game({
+const config = {
   type: Phaser.AUTO,
   parent: "app",
-  scale: { mode: Phaser.Scale.RESIZE },
-  physics: { default: "arcade", arcade: { debug: false } },
-  scene: [TitleScene, MenuScene, GameScene, ClearScene], // ★ Title を追加
-});
+  width: 1280,
+  height: 720,
+  physics: {
+    default: "arcade",
+    arcade: { debug: true },
+  },
+  scene: [TitleScene, StageSelectScene, GameScene],
+};
+
+new Phaser.Game(config);

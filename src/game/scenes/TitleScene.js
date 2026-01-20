@@ -1,45 +1,40 @@
+// src/game/scenes/TitleScene.js
+import Phaser from "phaser";
+
 export class TitleScene extends Phaser.Scene {
   constructor() {
-    super("title");
+    super("TitleScene");
   }
 
   create() {
-    const w = this.scale.width;
-    const h = this.scale.height;
+    // 背景
+    this.cameras.main.setBackgroundColor(0xffffff);
 
-    this.cameras.main.setBackgroundColor("#0b1220");
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
 
-    // タイトル
-    const title = this.add.text(w / 2, h * 0.28, "Kamashin Brothers", {
-      fontFamily: "system-ui",
-      fontSize: "40px",
-      color: "#ffffff",
-      fontStyle: "bold",
+    this.add
+      .text(cx, cy - 60, "kamakura brother's", {
+        fontSize: "64px",
+        color: "#000",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+
+    this.add
+      .text(cx, cy + 40, "PRESS SPACE TO START", {
+        fontSize: "24px",
+        color: "#000",
+      })
+      .setOrigin(0.5);
+
+    // キー
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.input.keyboard.addCapture(["UP", "DOWN", "LEFT", "RIGHT", "SPACE"]);
+
+    // SPACEでステージセレクトへ
+    this.input.keyboard.on("keydown-SPACE", () => {
+      this.scene.start("StageSelectScene", { selectedIndex: 0 });
     });
-    title.setOrigin(0.5);
-
-    // 操作案内
-    const hint = this.add.text(w / 2, h * 0.62, "クリック or Enter でスタート", {
-      fontFamily: "system-ui",
-      fontSize: "22px",
-      color: "#ffffff",
-      backgroundColor: "rgba(255,255,255,0.12)",
-      padding: { x: 16, y: 10 },
-    });
-    hint.setOrigin(0.5);
-
-    // ちょい演出（点滅）
-    this.tweens.add({
-      targets: hint,
-      alpha: 0.25,
-      duration: 700,
-      yoyo: true,
-      repeat: -1,
-    });
-
-    // 入力でメニューへ
-    this.input.once("pointerdown", () => this.scene.start("menu"));
-    this.input.keyboard.once("keydown-ENTER", () => this.scene.start("menu"));
-    this.input.keyboard.once("keydown-SPACE", () => this.scene.start("menu"));
   }
 }
