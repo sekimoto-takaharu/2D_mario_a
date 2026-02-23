@@ -8,7 +8,7 @@ export class StageSelectScene extends Phaser.Scene {
   }
 
   preload() {
-    // ★ここが重要：StageSelectで使う画像はStageSelectでロードする
+    // StageSelectで使う画像はStageSelectでロード
     this.load.image("spr_player", "assets/player.png");
   }
 
@@ -22,27 +22,26 @@ export class StageSelectScene extends Phaser.Scene {
 
     this.cameras.main.setBackgroundColor(0xffffff);
 
-    // ---- セーブ情報（SaveDataScene で registry に入れてある前提）----
-    this.save = this.registry.get("save") || null;
-    this.slot = this.registry.get("saveSlot") || null;
+    // --- セーブ取得（registryから） ---
+    this.save = this.registry.get("save") ?? { clearedStages: [], coins: 0, lives: 3 };
+    this.slot = this.registry.get("saveSlot") ?? null;
 
-    // クリア済みステージ
-    this.clearedSet = new Set(this.save?.clearedStages ?? []);
+    // クリア済みSet
+    this.clearedSet = new Set(this.save.clearedStages ?? []);
+
+    // --- 全ステージ（表示順の基準） ---
+    this.allKeys = Object.keys(COURSES);
+
+    // --- 解放上限 index（クリア済み + 次の1つまで） ---
+    // 例：何もクリアしてない => 0（1-1のみ）
+    // 例：1-1クリア => 1（1-2まで）
+    this.unlockedMaxIndex = this._calcUnlockedMaxIndex();
 
     // ---- 入力 ----
     this.cursors = this.input.keyboard.createCursorKeys();
     this.input.keyboard.addCapture(["UP", "DOWN", "LEFT", "RIGHT", "SPACE"]);
 
-    // ---- ステージ一覧（COURSESの並び＝ステージ順の前提）----
-    this.courseKeys = Object.keys(COURSES);
-    console.log("COURSES keys:", this.courseKeys);
-
-    // ---- 解放判定：クリア済み + 次の1個だけプレイ可能 ----
-    // 例）1-1 クリア済み → unlockedMaxIndex = 1 → 1-2 まで解放
-    // 何もクリアしてない → unlockedMaxIndex = 0 → 1-1 だけ解放
-    this.unlockedMaxIndex = this._calcUnlockedMaxIndex();
-
-    // ---- 位置 ----
+    // ---- 位置（ステージ総数で決める）----
     this.positions = [
       { x: 200, y: 350 },
       { x: 440, y: 420 },
@@ -50,9 +49,9 @@ export class StageSelectScene extends Phaser.Scene {
       { x: 1040, y: 420 },
     ];
 
-    // コース数 > positions のときは横に並べる簡易配置
-    if (this.courseKeys.length > this.positions.length) {
-      this.positions = this.courseKeys.map((_, i) => ({
+    // ステージ数 > positions のときは横並び簡易配置
+    if (this.allKeys.length > this.positions.length) {
+      this.positions = this.allKeys.map((_, i) => ({
         x: 180 + i * 220,
         y: i % 2 === 0 ? 350 : 420,
       }));
@@ -60,14 +59,16 @@ export class StageSelectScene extends Phaser.Scene {
 
     // ---- 選択中インデックス ----
     this.selectedIndex = 0;
+
+    // 復帰時の選択を反映（ただしロックには行けない）
     if (typeof data?.selectedIndex === "number") this.selectedIndex = data.selectedIndex;
 
     if (data?.selectedCourseKey) {
-      const idx = this.courseKeys.indexOf(data.selectedCourseKey);
+      const idx = this.allKeys.indexOf(data.selectedCourseKey);
       if (idx >= 0) this.selectedIndex = idx;
     }
 
-    // 念のため：ロック範囲を選択して復帰してきたら、解放済みに寄せる
+    // ★ ロック範囲を選択して戻ってきたら、解放上限に丸める
     if (this.selectedIndex > this.unlockedMaxIndex) {
       this.selectedIndex = this.unlockedMaxIndex;
     }
@@ -78,10 +79,7 @@ export class StageSelectScene extends Phaser.Scene {
     this.headerBox.strokeRect(260, 50, 760, 120);
 
     // セーブ表示
-    this.saveInfoText = this.add
-      .text(290, 65, "", { fontSize: "20px", color: "#000" })
-      .setDepth(30);
-
+    this.saveInfoText = this.add.text(290, 65, "", { fontSize: "20px", color: "#000" }).setDepth(30);
     this._updateSaveInfoText();
 
     // ステージ名
@@ -103,9 +101,9 @@ export class StageSelectScene extends Phaser.Scene {
     // 道（点線）
     this._drawDottedPath();
 
-    // ---- ステージ楕円（courseKeysの数だけ描く）----
+    // ---- ステージ楕円（全ステージ描画）----
     this.stageNodes = [];
-    for (let i = 0; i < this.courseKeys.length; i++) {
+    for (let i = 0; i < this.allKeys.length; i++) {
       const pos = this.positions[i];
 
       const g = this.add.graphics();
@@ -114,8 +112,9 @@ export class StageSelectScene extends Phaser.Scene {
         .text(pos.x, pos.y, String(i + 1), { fontSize: "28px", color: "#fff" })
         .setOrigin(0.5);
 
+      // 右上：クリア ✓ / ロック 🔒
       const mark = this.add
-        .text(pos.x + 55, pos.y - 35, "", { fontSize: "28px", color: "#000" })
+        .text(pos.x + 55, pos.y - 35, "", { fontSize: "28px", color: "#111827" })
         .setOrigin(0.5);
 
       this.stageNodes.push({
@@ -134,21 +133,11 @@ export class StageSelectScene extends Phaser.Scene {
 
     // 補足
     this.add
-      .text(
-        70,
-        560,
-        "← / → で移動   SPACE でステージ開始\nロック中のステージは開始できません\n死亡した場合はこの画面に戻ります",
-        {
-          fontSize: "18px",
-          color: "#000",
-        }
-      )
+      .text(70, 560, "← / → で移動   SPACE でステージ開始\nロック中のステージには移動できません", {
+        fontSize: "18px",
+        color: "#000",
+      })
       .setDepth(20);
-
-    // 入力ログ（原因切り分け用：不要なら消してOK）
-    this.input.keyboard.on("keydown", (ev) => {
-      console.log("keydown:", ev.code);
-    });
 
     // 初期反映
     this._applySelection();
@@ -163,13 +152,12 @@ export class StageSelectScene extends Phaser.Scene {
 
     // ステージ開始
     this.input.keyboard.on("keydown-SPACE", () => {
-      const isLocked = this._isLockedIndex(this.selectedIndex);
-      if (isLocked) {
+      if (this._isLockedIndex(this.selectedIndex)) {
         this.cameras.main.shake(120, 0.006);
         return;
       }
 
-      const courseKey = this.courseKeys[this.selectedIndex];
+      const courseKey = this.allKeys[this.selectedIndex];
       this.scene.start("GameScene", {
         courseKey,
         returnTo: "StageSelectScene",
@@ -180,19 +168,18 @@ export class StageSelectScene extends Phaser.Scene {
 
   // ---- 解放上限を計算（クリア済み + 次の1つだけ）----
   _calcUnlockedMaxIndex() {
-    // 何もクリアしてないなら 0（1番目だけ解放）
-    if (!this.courseKeys?.length) return 0;
+    if (!this.allKeys?.length) return 0;
 
     let lastClearedIndex = -1;
-    for (let i = 0; i < this.courseKeys.length; i++) {
-      const key = this.courseKeys[i];
+    for (let i = 0; i < this.allKeys.length; i++) {
+      const key = this.allKeys[i];
       if (this.clearedSet.has(key)) lastClearedIndex = i;
     }
 
     // 次の1つまで解放
-    const unlocked = Math.min(lastClearedIndex + 1, this.courseKeys.length - 1);
+    const unlocked = Math.min(lastClearedIndex + 1, this.allKeys.length - 1);
 
-    // lastClearedIndex=-1 なら unlocked=0 になる
+    // lastClearedIndex=-1 なら unlocked=0
     return Math.max(unlocked, 0);
   }
 
@@ -212,22 +199,35 @@ export class StageSelectScene extends Phaser.Scene {
     }
   }
 
+  // ★ ここが「移動できない」肝：解放上限の範囲内でしか移動させない
   _moveSelection(dir) {
-    const n = this.courseKeys.length;
-    if (n <= 1) return;
+    const max = this.unlockedMaxIndex;
+    if (max <= 0) {
+      this.selectedIndex = 0;
+      this._applySelection();
+      return;
+    }
 
-    this.selectedIndex = (this.selectedIndex + dir + n) % n;
+    let next = this.selectedIndex + dir;
+
+    // 範囲外に出ようとしたら止める（揺れなど演出）
+    if (next < 0 || next > max) {
+      this.cameras.main.shake(80, 0.004);
+      return;
+    }
+
+    this.selectedIndex = next;
     this._applySelection();
   }
 
   _applySelection() {
-    const courseKey = this.courseKeys[this.selectedIndex];
+    const courseKey = this.allKeys[this.selectedIndex];
     const course = COURSES[courseKey];
 
     const isLocked = this._isLockedIndex(this.selectedIndex);
     const isCleared = this.clearedSet.has(courseKey);
 
-    // タイトル表示
+    // 上部タイトル表示
     if (isLocked) {
       this.stageNameText.setText(`ステージ${this.selectedIndex + 1}： ？？？`);
       this.subText.setText("前のステージをクリアすると解放されます");
@@ -236,14 +236,15 @@ export class StageSelectScene extends Phaser.Scene {
       this.subText.setText(isCleared ? "クリア済み（✓）" : "未クリア");
     }
 
-    // キャラ位置
+    // カーソル位置
     const p = this.positions[this.selectedIndex];
     this.cursorChar.setPosition(p.x, p.y - 20);
 
-    // ノード描画（ロック/クリア/選択を反映）
+    // ノード描画（全ステージ分）
     for (let i = 0; i < this.stageNodes.length; i++) {
       const node = this.stageNodes[i];
-      const key = this.courseKeys[i];
+      const key = this.allKeys[i];
+
       const locked = this._isLockedIndex(i);
       const cleared = this.clearedSet.has(key);
       const sel = i === this.selectedIndex;
@@ -262,8 +263,11 @@ export class StageSelectScene extends Phaser.Scene {
       // 数字の色（ロックは薄く）
       node.label.setColor(locked ? "#e5e7eb" : "#ffffff");
 
-      // クリアマーク
-      node.mark.setText(cleared ? "✓" : "");
+      // マーク：クリアなら ✓、ロックなら 🔒（未クリア解放は空）
+      if (cleared) node.mark.setText("✓");
+      else if (locked) node.mark.setText("🔒");
+      else node.mark.setText("");
+
       node.mark.setColor("#111827");
     }
   }
@@ -293,7 +297,7 @@ export class StageSelectScene extends Phaser.Scene {
       }
     };
 
-    // positions の間をつなぐ
+    // positions の間をつなぐ（表示数＝全ステージに合わせる）
     for (let i = 0; i < this.positions.length - 1; i++) {
       const p1 = this.positions[i];
       const p2 = this.positions[i + 1];

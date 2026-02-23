@@ -7,7 +7,10 @@ export class TitleScene extends Phaser.Scene {
 
   create() {
     const w = this.scale.width;
-    const h = this.scale.height;
+
+    if (!this.scene.isActive("AudioScene")) {
+      this.scene.launch("AudioScene");
+    }
 
     this.cameras.main.setBackgroundColor("#0b1020");
 
@@ -35,9 +38,11 @@ export class TitleScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.input.keyboard.addCapture(["SPACE"]);
-    this.input.keyboard.on("keydown-SPACE", () => {
-      this.scene.start("SaveDataScene");
-    });
+  this.input.keyboard.once("keydown-SPACE", async () => {
+    const audio = this.scene.get("AudioScene");
+    await audio.playBgm("bgm_title", { volume: 0.4 });
+
+    this.scene.start("SaveDataScene");
+  });
   }
 }
