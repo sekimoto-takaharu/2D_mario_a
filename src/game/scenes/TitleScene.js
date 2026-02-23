@@ -5,12 +5,12 @@ export class TitleScene extends Phaser.Scene {
     super("TitleScene");
   }
 
-  preload() {
-    this.load.audio("bgm_title", "audio/bgm/titleScene.mp3");
-  }
-
   create() {
     const w = this.scale.width;
+
+    if (!this.scene.isActive("AudioScene")) {
+      this.scene.launch("AudioScene");
+    }
 
     this.cameras.main.setBackgroundColor("#0b1020");
 
@@ -38,17 +38,11 @@ export class TitleScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.input.keyboard.addCapture(["SPACE"]);
+  this.input.keyboard.once("keydown-SPACE", async () => {
+    const audio = this.scene.get("AudioScene");
+    await audio.playBgm("bgm_title", { volume: 0.4 });
 
-    this.input.keyboard.once("keydown-SPACE", () => {
-      // BGM再生（ループ）
-      const bgm = this.sound.add("bgm_title", {
-        loop: true,
-        volume: 0.4,
-      });
-      bgm.play();
-
-      this.scene.start("SaveDataScene");
-    });
+    this.scene.start("SaveDataScene");
+  });
   }
 }

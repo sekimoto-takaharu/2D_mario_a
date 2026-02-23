@@ -43,6 +43,9 @@ export class GameScene extends Phaser.Scene {
 
     const keys = Object.keys(COURSES);
     const courseKey = data?.courseKey ?? keys[0];
+    const audio = this.scene.get("AudioScene");
+    const theme = COURSES[courseKey]?.theme ?? "ground";
+    audio?.playBgm?.(`bgm_${theme}`, { volume: 0.35 });
     this._loadCourse(courseKey);
   }
 
@@ -565,7 +568,44 @@ export class GameScene extends Phaser.Scene {
   }
 
   _die() {
-    this.scene.start(this.returnTo, { selectedIndex: this.selectedIndex, selectedCourseKey: this.courseKey });
+    // 残機を減らす
+    const save = this.registry.get("save");
+    const slot = this.registry.get("saveSlot");
+
+    if (save) {
+      save.lives = (save.lives ?? 0) - 1;
+      save.updatedAt = Date.now();
+
+      // 0未満にしない
+      if (save.lives < 0) save.lives = 0;
+
+      // localStorageに保存（スロット運用してる前提）
+      if (slot) {
+        localStorage.setItem(`mario2d_save_v1_slot${slot}`, JSON.stringify(save));
+      }
+
+      // registry更新
+      this.registry.set("save", save);
+    }
+
+    const lives = save?.lives ?? 0;
+
+    // livesが0ならゲームオーバー
+    if (lives <= 0) {
+      this.scene.start("GameOverScene", {
+        returnTo: this.returnTo,
+        selectedIndex: this.selectedIndex,
+        courseKey: this.courseKey,
+      });
+      return;
+    }
+
+    // まだ残機があるなら「続ける？戻る？」へ
+    this.scene.start("DeathMenuScene", {
+      returnTo: this.returnTo,
+      selectedIndex: this.selectedIndex,
+      courseKey: this.courseKey,
+    });
   }
 
   _saveClearToSlot(courseKey) {
