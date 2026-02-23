@@ -522,6 +522,9 @@ export class GameScene extends Phaser.Scene {
     if (this.isClearing) return;
     this.isClearing = true;
 
+    // ★ここで「クリア済み」を保存
+    this._saveClearToSlot(this.courseKey);
+
     const msg = this.add
       .text(this.cameras.main.scrollX + this.scale.width / 2, 140, "CLEAR!", {
         fontSize: "64px",
@@ -534,7 +537,10 @@ export class GameScene extends Phaser.Scene {
 
     this.time.delayedCall(900, () => {
       msg.destroy();
-      this.scene.start(this.returnTo, { selectedIndex: this.selectedIndex, selectedCourseKey: this.courseKey });
+      this.scene.start(this.returnTo, {
+        selectedIndex: this.selectedIndex,
+        selectedCourseKey: this.courseKey,
+      });
     });
   }
 
@@ -561,4 +567,27 @@ export class GameScene extends Phaser.Scene {
   _die() {
     this.scene.start(this.returnTo, { selectedIndex: this.selectedIndex, selectedCourseKey: this.courseKey });
   }
+
+  _saveClearToSlot(courseKey) {
+  const save = this.registry.get("save");
+  const slot = this.registry.get("saveSlot");
+
+  if (!save || !slot) {
+    console.warn("save/slot missing. clear not saved.", { save, slot });
+    return;
+  }
+
+  save.clearedStages = save.clearedStages ?? [];
+  if (!save.clearedStages.includes(courseKey)) {
+    save.clearedStages.push(courseKey);
+  }
+
+  save.updatedAt = Date.now();
+
+  // ★ 3スロット版と同じキー
+  localStorage.setItem(`mario2d_save_v1_slot${slot}`, JSON.stringify(save));
+
+  // registryも更新して、戻った直後に反映されるようにする
+  this.registry.set("save", save);
+}
 }

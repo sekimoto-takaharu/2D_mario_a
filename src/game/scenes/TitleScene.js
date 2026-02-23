@@ -1,4 +1,3 @@
-// src/game/scenes/TitleScene.js
 import Phaser from "phaser";
 
 export class TitleScene extends Phaser.Scene {
@@ -7,34 +6,38 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create() {
-    // 背景
-    this.cameras.main.setBackgroundColor(0xffffff);
+    const w = this.scale.width;
+    const h = this.scale.height;
 
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
+    this.cameras.main.setBackgroundColor("#0b1020");
 
     this.add
-      .text(cx, cy - 60, "kamakura brother's", {
-        fontSize: "64px",
-        color: "#000",
-        fontStyle: "bold",
+      .text(w / 2, 220, "MARIO 2D", {
+        fontFamily: "monospace",
+        fontSize: "72px",
+        color: "#ffffff",
       })
       .setOrigin(0.5);
 
     this.add
-      .text(cx, cy + 40, "PRESS SPACE TO START", {
-        fontSize: "24px",
-        color: "#000",
+      .text(w / 2, 330, "SPACE でスタート", {
+        fontFamily: "monospace",
+        fontSize: "26px",
+        color: "#fbbf24",
       })
       .setOrigin(0.5);
 
-    // キー
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.input.keyboard.addCapture(["UP", "DOWN", "LEFT", "RIGHT", "SPACE"]);
+    this.add
+      .text(w / 2, 380, "（セーブデータ選択へ）", {
+        fontFamily: "monospace",
+        fontSize: "16px",
+        color: "#9ca3af",
+      })
+      .setOrigin(0.5);
 
-    // SPACEでステージセレクトへ
+    this.input.keyboard.addCapture(["SPACE"]);
     this.input.keyboard.on("keydown-SPACE", () => {
-      this.scene.start("StageSelectScene", { selectedIndex: 0 });
+      this.scene.start("SaveDataScene");
     });
   }
 }
