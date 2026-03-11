@@ -22,6 +22,9 @@ export class EndingScene extends Phaser.Scene {
   }
 
   create() {
+    const audio = this.scene.get("AudioScene");
+    audio?.stopBgm?.();
+
     this.cameras.main.setBackgroundColor("#050816");
 
     this.add

@@ -872,8 +872,8 @@ export class GameScene extends Phaser.Scene {
     this.isClearing = true;
 
     // ★ここで「クリア済み」を保存
-    const firstClear = this._saveClearToSlot(this.courseKey);
-    const storyId = this._resolvePostClearStory(firstClear);
+    this._saveClearToSlot(this.courseKey);
+    const storyId = this._resolvePostClearStory();
     const shouldShowEndingCredits = this._shouldShowEndingCredits();
 
     const msg = this.add
@@ -998,21 +998,16 @@ export class GameScene extends Phaser.Scene {
     return firstClear;
   }
 
-  _resolvePostClearStory(firstClear) {
+  _resolvePostClearStory() {
     const save = normalizeSave(this.registry.get("save"));
     const cleared = new Set(save.clearedStages ?? []);
     const allCleared = Object.keys(COURSES).every((key) => cleared.has(key));
 
-    if (allCleared && !save.story?.endingSeen) {
+    if (this.courseKey === "castle" && allCleared) {
       return "ending";
     }
 
-    if (!firstClear) {
-      return null;
-    }
-
-    const storyId = `clear_${this.courseKey}`;
-    return save.story?.interludes?.[this.courseKey] ? null : storyId;
+    return `clear_${this.courseKey}`;
   }
 
   _shouldShowEndingCredits() {
