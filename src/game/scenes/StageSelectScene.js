@@ -1,6 +1,7 @@
 // src/game/scenes/StageSelectScene.js
 import Phaser from "phaser";
 import { COURSES } from "../courses";
+import { normalizeSave } from "../utils/saveData";
 
 export class StageSelectScene extends Phaser.Scene {
   constructor() {
@@ -23,7 +24,7 @@ export class StageSelectScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(0xffffff);
 
     // --- セーブ取得（registryから） ---
-    this.save = this.registry.get("save") ?? { clearedStages: [], coins: 0, lives: 3 };
+    this.save = normalizeSave(this.registry.get("save") ?? { clearedStages: [], coins: 0, lives: 3 });
     this.slot = this.registry.get("saveSlot") ?? null;
 
     // クリア済みSet
@@ -193,9 +194,9 @@ export class StageSelectScene extends Phaser.Scene {
     const clearedCount = (this.save?.clearedStages ?? []).length;
 
     if (this.slot) {
-      this.saveInfoText.setText(`SLOT ${this.slot}   コイン:${coins}   残機:${lives}   クリア:${clearedCount}`);
+      this.saveInfoText.setText(`SLOT ${this.slot}   コイン:${coins}   残機:${lives}   回復した欠片:${clearedCount}/4`);
     } else {
-      this.saveInfoText.setText(`セーブ未選択   コイン:${coins}   残機:${lives}   クリア:${clearedCount}`);
+      this.saveInfoText.setText(`セーブ未選択   コイン:${coins}   残機:${lives}   回復した欠片:${clearedCount}/4`);
     }
   }
 
