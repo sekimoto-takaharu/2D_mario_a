@@ -7,6 +7,7 @@ import { AudioScene } from "./game/scenes/AudioScene";
 import { DeathMenuScene } from "./game/scenes/DeathMenuScene";
 import { GameOverScene } from "./game/scenes/GameOverScene";
 import { StoryScene } from "./game/scenes/StoryScene";
+import { EndingScene } from "./game/scenes/EndingScene";
 
 const config = {
   type: Phaser.AUTO,
@@ -14,7 +15,7 @@ const config = {
   width: 1280,
   height: 720,
   physics: { default: "arcade", arcade: { debug: true } },
-  scene: [TitleScene, SaveDataScene, StageSelectScene, StoryScene, GameScene, AudioScene, DeathMenuScene, GameOverScene],
+  scene: [TitleScene, SaveDataScene, StageSelectScene, StoryScene, EndingScene, GameScene, AudioScene, DeathMenuScene, GameOverScene],
 };
 
 new Phaser.Game(config);
