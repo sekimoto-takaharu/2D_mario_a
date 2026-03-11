@@ -1,6 +1,7 @@
 // src/game/scenes/GameScene.js
 import Phaser from "phaser";
 import { COURSES } from "../courses";
+import { normalizeSave, writeSlot } from "../utils/saveData";
 
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -526,7 +527,8 @@ export class GameScene extends Phaser.Scene {
     this.isClearing = true;
 
     // ★ここで「クリア済み」を保存
-    this._saveClearToSlot(this.courseKey);
+    const firstClear = this._saveClearToSlot(this.courseKey);
+    const storyId = this._resolvePostClearStory(firstClear);
 
     const msg = this.add
       .text(this.cameras.main.scrollX + this.scale.width / 2, 140, "CLEAR!", {
@@ -540,6 +542,18 @@ export class GameScene extends Phaser.Scene {
 
     this.time.delayedCall(900, () => {
       msg.destroy();
+      if (storyId) {
+        this.scene.start("StoryScene", {
+          storyId,
+          nextScene: this.returnTo,
+          nextData: {
+            selectedIndex: this.selectedIndex,
+            selectedCourseKey: this.courseKey,
+          },
+        });
+        return;
+      }
+
       this.scene.start(this.returnTo, {
         selectedIndex: this.selectedIndex,
         selectedCourseKey: this.courseKey,
@@ -569,7 +583,7 @@ export class GameScene extends Phaser.Scene {
 
   _die() {
     // 残機を減らす
-    const save = this.registry.get("save");
+    const save = normalizeSave(this.registry.get("save"));
     const slot = this.registry.get("saveSlot");
 
     if (save) {
@@ -581,7 +595,7 @@ export class GameScene extends Phaser.Scene {
 
       // localStorageに保存（スロット運用してる前提）
       if (slot) {
-        localStorage.setItem(`mario2d_save_v1_slot${slot}`, JSON.stringify(save));
+        writeSlot(slot, save);
       }
 
       // registry更新
@@ -609,25 +623,41 @@ export class GameScene extends Phaser.Scene {
   }
 
   _saveClearToSlot(courseKey) {
-  const save = this.registry.get("save");
-  const slot = this.registry.get("saveSlot");
+    const save = normalizeSave(this.registry.get("save"));
+    const slot = this.registry.get("saveSlot");
 
-  if (!save || !slot) {
-    console.warn("save/slot missing. clear not saved.", { save, slot });
-    return;
+    if (!slot) {
+      console.warn("save/slot missing. clear not saved.", { save, slot });
+      return false;
+    }
+
+    const firstClear = !save.clearedStages.includes(courseKey);
+    if (firstClear) {
+      save.clearedStages.push(courseKey);
+    }
+
+    save.updatedAt = Date.now();
+
+    writeSlot(slot, save);
+    this.registry.set("save", save);
+
+    return firstClear;
   }
 
-  save.clearedStages = save.clearedStages ?? [];
-  if (!save.clearedStages.includes(courseKey)) {
-    save.clearedStages.push(courseKey);
+  _resolvePostClearStory(firstClear) {
+    const save = normalizeSave(this.registry.get("save"));
+    const cleared = new Set(save.clearedStages ?? []);
+    const allCleared = Object.keys(COURSES).every((key) => cleared.has(key));
+
+    if (allCleared && !save.story?.endingSeen) {
+      return "ending";
+    }
+
+    if (!firstClear) {
+      return null;
+    }
+
+    const storyId = `clear_${this.courseKey}`;
+    return save.story?.interludes?.[this.courseKey] ? null : storyId;
   }
-
-  save.updatedAt = Date.now();
-
-  // ★ 3スロット版と同じキー
-  localStorage.setItem(`mario2d_save_v1_slot${slot}`, JSON.stringify(save));
-
-  // registryも更新して、戻った直後に反映されるようにする
-  this.registry.set("save", save);
-}
 }

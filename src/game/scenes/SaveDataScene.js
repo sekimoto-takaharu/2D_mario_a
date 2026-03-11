@@ -1,39 +1,8 @@
 import Phaser from "phaser";
-
-const KEY_PREFIX = "mario2d_save_v1_slot";
-
-function keyOf(slotNo) {
-  return `${KEY_PREFIX}${slotNo}`;
-}
-
-function loadSlot(slotNo) {
-  try {
-    const raw = localStorage.getItem(keyOf(slotNo));
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeSlot(slotNo, data) {
-  localStorage.setItem(keyOf(slotNo), JSON.stringify(data));
-}
+import { keyOf, loadSlot, makeNewSave, normalizeSave, writeSlot } from "../utils/saveData";
 
 function deleteSlot(slotNo) {
   localStorage.removeItem(keyOf(slotNo));
-}
-
-function makeNewSave() {
-  const now = Date.now();
-  return {
-    version: 1,
-    createdAt: now,
-    updatedAt: now,
-    clearedStages: [],
-    coins: 0,
-    lives: 3,
-    player: { hp: 3 },
-  };
 }
 
 export class SaveDataScene extends Phaser.Scene {
@@ -189,6 +158,7 @@ export class SaveDataScene extends Phaser.Scene {
     if (!data) {
       data = makeNewSave();
     } else {
+      data = normalizeSave(data);
       data.updatedAt = Date.now();
     }
 
@@ -198,6 +168,14 @@ export class SaveDataScene extends Phaser.Scene {
 
     this.registry.set("saveSlot", slotNo);
     this.registry.set("save", data);
+
+    if (!data.story?.introSeen) {
+      this.scene.start("StoryScene", {
+        storyId: "intro",
+        nextScene: "StageSelectScene",
+      });
+      return;
+    }
 
     this.scene.start("StageSelectScene");
   }
