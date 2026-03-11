@@ -90,6 +90,13 @@ export class GameScene extends Phaser.Scene {
     this.isClearing = false;
     this.isBig = false;
     this._blockHitLock = false;
+    this.boss = null;
+    this.pendingGoal = null;
+    this.bossHud = null;
+    this.bossHpFill = null;
+    this.bossMaxHp = 0;
+    this.bossContactLockUntil = 0;
+    this.bossWeakSpot = null;
 
     this.courseKey = courseKey;
     this.course = COURSES[this.courseKey];
@@ -129,6 +136,7 @@ export class GameScene extends Phaser.Scene {
     this.goal = this.physics.add.staticGroup();
 
     this.enemies = this.physics.add.group({ allowGravity: true, immovable: false });
+    this.bossGroup = this.physics.add.group({ allowGravity: true, immovable: false });
     this.items = this.physics.add.group({ allowGravity: true, immovable: false });
 
     this.movers = this.physics.add.staticGroup();
@@ -189,9 +197,14 @@ export class GameScene extends Phaser.Scene {
     this._colliders.push(this.physics.add.collider(this.enemies, this.solids));
     this._colliders.push(this.physics.add.collider(this.enemies, this.blocks));
     this._colliders.push(this.physics.add.collider(this.enemies, this.movers));
+    this._colliders.push(this.physics.add.collider(this.bossGroup, this.solids));
+    this._colliders.push(this.physics.add.collider(this.bossGroup, this.blocks));
+    this._colliders.push(this.physics.add.collider(this.bossGroup, this.movers));
 
     // 敵に当たったら死亡
-    this._colliders.push(this.physics.add.collider(this.player, this.enemies, () => this._die()));
+    this._colliders.push(this.physics.add.collider(this.player, this.enemies, (player, enemy) => {
+      this._onPlayerEnemyCollision(player, enemy);
+    }));
 
     this._colliders.push(this.physics.add.collider(this.items, this.solids));
     this._colliders.push(this.physics.add.collider(this.items, this.blocks));
@@ -208,6 +221,14 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.physics.add.overlap(this.player, this.goal, () => this._clearCourse());
+    this.physics.add.overlap(this.player, this.bossGroup, (player, boss) => {
+      this._onPlayerBossOverlap(player, boss);
+    });
+    if (this.bossWeakSpot) {
+      this.physics.add.overlap(this.player, this.bossWeakSpot, (player, weakSpot) => {
+        this._onBossWeakSpotOverlap(player, weakSpot);
+      });
+    }
 
     this.physics.add.overlap(this.player, this.items, (p, it) => {
       if (it.getData("type") === "mushroom") {
@@ -279,9 +300,41 @@ export class GameScene extends Phaser.Scene {
         if (enemy.y <= minY) enemy.setData("vSpeed", Math.abs(vSpeed));
         if (enemy.y >= maxY) enemy.setData("vSpeed", -Math.abs(vSpeed));
       }
-
       if (enemy.y > this.worldH + this.tile * 4) enemy.destroy();
     }
+
+    for (const boss of this.bossGroup.getChildren()) {
+      if (boss.getData("invulnUntil") > this.time.now) {
+        boss.setAlpha(boss.alpha === 1 ? 0.45 : 1);
+      } else {
+        boss.setAlpha(1);
+      }
+
+      boss.y = boss.getData("baseY");
+      let speed = boss.getData("speed") ?? 90;
+      const dt = this.game.loop.delta / 1000;
+
+      if (boss.x <= boss.getData("minX")) {
+        boss.x = boss.getData("minX");
+        speed = Math.abs(speed);
+        boss.setFlipX(false);
+      }
+
+      if (boss.x >= boss.getData("maxX")) {
+        boss.x = boss.getData("maxX");
+        speed = -Math.abs(speed);
+        boss.setFlipX(true);
+      }
+
+      boss.x += speed * dt;
+      boss.setData("speed", speed);
+      boss.body.setVelocity(0, 0);
+      boss.body.updateFromGameObject();
+
+      if (boss.y > this.worldH + this.tile * 4) boss.destroy();
+    }
+
+    this._syncBossWeakSpot();
 
     // movers update（上下往復）：static を動かす → refreshBody
     for (const plat of this.movers.getChildren()) {
@@ -359,6 +412,10 @@ export class GameScene extends Phaser.Scene {
           case "G": {
             const g = this._addStaticSprite(this.goal, "spr_goal", x, y, this.tile * 0.7, this.tile * 1.4);
             g.setDepth(450);
+            if (this.courseKey === "castle") {
+              this.pendingGoal = g;
+              g.disableBody(true, true);
+            }
             break;
           }
           case "^": {
@@ -386,6 +443,9 @@ export class GameScene extends Phaser.Scene {
             break;
           case "W":
             this._spawnMover(x, y, -60);
+            break;
+          case "K":
+            this._spawnBoss(x, y);
             break;
 
           case "P":
@@ -494,6 +554,291 @@ export class GameScene extends Phaser.Scene {
     return p;
   }
 
+  _spawnBoss(x, y) {
+    const boss = this.physics.add.sprite(x, y, "spr_enemy");
+    boss.setDisplaySize(this.tile * 1.6, this.tile * 1.4);
+    boss.body.setSize(boss.displayWidth * 0.75, boss.displayHeight * 0.9, true);
+    boss.setTint(0xb91c1c);
+    boss.setBounce(0);
+    boss.setCollideWorldBounds(false);
+    boss.body.setAllowGravity(false);
+    boss.body.setImmovable(true);
+    boss.setDepth(520);
+    boss.setData("kind", "boss");
+    boss.setData("hp", 3);
+    boss.setData("speed", -90);
+    boss.setData("minX", x - this.tile * 4);
+    boss.setData("maxX", x + this.tile * 4);
+    boss.setData("invulnUntil", 0);
+    boss.setData("baseY", y);
+    this.bossGroup.add(boss);
+    this.boss = boss;
+    this.bossMaxHp = 3;
+    this._createBossWeakSpot(boss);
+
+    this._showBossIntro();
+    this._createBossHud();
+  }
+
+  _onPlayerEnemyCollision(_player, _enemy) {
+    this._die();
+  }
+
+  _onPlayerBossOverlap(player, boss) {
+    if (!boss.active) return;
+    if (this.time.now < this.bossContactLockUntil) return;
+
+    const playerBottom = player.body.bottom;
+    const bossTop = boss.body.top;
+    const approachingFromTop = playerBottom <= bossTop + this.tile * 0.45;
+
+    if (approachingFromTop) return;
+
+    this._die();
+  }
+
+  _applyBossDamage(player, boss) {
+    this.bossContactLockUntil = this.time.now + 250;
+    player.body.setVelocityY(this.playerConf.jumpVY * 0.58);
+    this._damageBoss(boss);
+  }
+
+  _createBossWeakSpot(boss) {
+    const weakSpot = this.add.zone(boss.x, boss.y - boss.displayHeight * 0.6, boss.displayWidth * 0.9, this.tile * 0.8);
+    this.physics.add.existing(weakSpot);
+    weakSpot.body.setAllowGravity(false);
+    weakSpot.body.moves = false;
+    weakSpot.setData("boss", boss);
+    this.bossWeakSpot = weakSpot;
+  }
+
+  _syncBossWeakSpot() {
+    if (!this.bossWeakSpot?.body || !this.boss?.active) return;
+
+    const x = this.boss.x;
+    const y = this.boss.body.top - this.tile * 0.2;
+    this.bossWeakSpot.setPosition(x, y);
+    this.bossWeakSpot.body.updateFromGameObject();
+  }
+
+  _onBossWeakSpotOverlap(player, weakSpot) {
+    const boss = weakSpot.getData("boss");
+    if (!boss?.active) return;
+    if (this.time.now < this.bossContactLockUntil) return;
+    if (boss.getData("invulnUntil") > this.time.now) return;
+    if (player.body.velocity.y < 60) return;
+
+    this._applyBossDamage(player, boss);
+  }
+
+  _damageBoss(boss) {
+    const nextHp = (boss.getData("hp") ?? 1) - 1;
+    boss.setData("hp", nextHp);
+    boss.setData("invulnUntil", this.time.now + 700);
+    boss.setTint(nextHp <= 0 ? 0xffffff : 0xfb7185);
+    this.cameras.main.shake(120, 0.008);
+    this.tweens.add({
+      targets: boss,
+      scaleX: 1.18,
+      scaleY: 1.18,
+      duration: 90,
+      yoyo: true,
+      ease: "Quad.easeOut",
+    });
+    this._showBossHitFeedback(boss.x, boss.y - boss.displayHeight * 0.45, Math.max(nextHp, 0));
+
+    this._refreshBossHud(Math.max(nextHp, 0));
+
+    if (nextHp > 0) {
+      this.time.delayedCall(140, () => {
+        if (boss.active) {
+          boss.setTint(0xb91c1c);
+        }
+      });
+      return;
+    }
+
+    this._defeatBoss(boss);
+  }
+
+  _defeatBoss(boss) {
+    this._addScore(1000);
+    this._refreshBossHud(0);
+    this.cameras.main.flash(300, 255, 245, 180);
+    this.cameras.main.shake(240, 0.012);
+    this._spawnBossBurst(boss.x, boss.y);
+
+    this.tweens.add({
+      targets: boss,
+      alpha: 0,
+      angle: 25,
+      scaleX: 1.5,
+      scaleY: 1.5,
+      duration: 280,
+      ease: "Quad.easeIn",
+      onComplete: () => boss.disableBody(true, true),
+    });
+
+    if (this.bossWeakSpot) {
+      this.bossWeakSpot.destroy();
+      this.bossWeakSpot = null;
+    }
+
+    if (this.bossHud) {
+      this.time.delayedCall(1200, () => this.bossHud?.destroy());
+      this.bossHud = null;
+      this.bossHpFill = null;
+    }
+
+    if (this.pendingGoal) {
+      this.pendingGoal.enableBody(false, this.pendingGoal.x, this.pendingGoal.y, true, true);
+      this.pendingGoal.setVisible(true);
+      this.pendingGoal.setActive(true);
+      this.pendingGoal.setAlpha(0);
+
+      this.tweens.add({
+        targets: this.pendingGoal,
+        alpha: 1,
+        y: this.pendingGoal.y - 10,
+        duration: 400,
+        ease: "Sine.easeOut",
+      });
+
+      this.add
+        .text(this.pendingGoal.x, this.pendingGoal.y - this.tile * 1.8, "光が戻った。ゴールへ進め！", {
+          fontSize: "24px",
+          color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 5,
+        })
+        .setOrigin(0.5)
+        .setDepth(1600)
+        .setScrollFactor(1);
+    }
+  }
+
+  _showBossIntro() {
+    this.cameras.main.flash(250, 255, 210, 210);
+
+    const warning = this.add
+      .text(this.scale.width / 2, this.scale.height / 2 - 40, "WARNING", {
+        fontFamily: "monospace",
+        fontSize: "72px",
+        color: "#fecaca",
+        stroke: "#7f1d1d",
+        strokeThickness: 12,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1800);
+
+    const sub = this.add
+      .text(this.scale.width / 2, this.scale.height / 2 + 30, "光を守る番人が現れた", {
+        fontFamily: "monospace",
+        fontSize: "26px",
+        color: "#fee2e2",
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1800);
+
+    this.tweens.add({
+      targets: [warning, sub],
+      alpha: 0,
+      y: "-=24",
+      delay: 700,
+      duration: 380,
+      ease: "Quad.easeOut",
+      onComplete: () => {
+        warning.destroy();
+        sub.destroy();
+      },
+    });
+  }
+
+  _createBossHud() {
+    const container = this.add.container(this.scale.width - 250, 18).setScrollFactor(0).setDepth(1400);
+
+    const frame = this.add.rectangle(0, 0, 220, 54, 0x111827, 0.85).setOrigin(0, 0).setStrokeStyle(3, 0x7f1d1d);
+    const label = this.add.text(16, 8, "BOSS", {
+      fontFamily: "monospace",
+      fontSize: "18px",
+      color: "#fecaca",
+    });
+
+    const fillBg = this.add.rectangle(16, 30, 188, 12, 0x3f3f46).setOrigin(0, 0);
+    const fill = this.add.rectangle(16, 30, 188, 12, 0xdc2626).setOrigin(0, 0);
+
+    container.add([frame, label, fillBg, fill]);
+
+    this.bossHud = container;
+    this.bossHpFill = fill;
+    this._refreshBossHud(this.bossMaxHp);
+  }
+
+  _refreshBossHud(hp) {
+    if (!this.bossHpFill) return;
+
+    const ratio = Phaser.Math.Clamp(hp / Math.max(this.bossMaxHp, 1), 0, 1);
+    this.bossHpFill.width = 188 * ratio;
+    this.bossHpFill.fillColor = ratio > 0.5 ? 0xdc2626 : ratio > 0.2 ? 0xf97316 : 0xfacc15;
+  }
+
+  _spawnBossBurst(x, y) {
+    for (let i = 0; i < 14; i++) {
+      const angle = Phaser.Math.DegToRad((360 / 14) * i);
+      const shard = this.add.circle(x, y, 6, i % 2 === 0 ? 0xfde68a : 0xffffff).setDepth(1700);
+      const dist = Phaser.Math.Between(this.tile, this.tile * 2);
+
+      this.tweens.add({
+        targets: shard,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        scale: 0.2,
+        duration: 420,
+        ease: "Quad.easeOut",
+        onComplete: () => shard.destroy(),
+      });
+    }
+  }
+
+  _showBossHitFeedback(x, y, hp) {
+    const hit = this.add
+      .text(x, y, `-1`, {
+        fontFamily: "monospace",
+        fontSize: "34px",
+        color: "#fde047",
+        stroke: "#7c2d12",
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5)
+      .setDepth(1750);
+
+    const status = this.add
+      .text(x, y - 28, hp > 0 ? "HIT!" : "BREAK!", {
+        fontFamily: "monospace",
+        fontSize: "22px",
+        color: hp > 0 ? "#ffffff" : "#fca5a5",
+        stroke: "#111827",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5)
+      .setDepth(1750);
+
+    this.tweens.add({
+      targets: [hit, status],
+      y: "-=34",
+      alpha: 0,
+      duration: 420,
+      ease: "Quad.easeOut",
+      onComplete: () => {
+        hit.destroy();
+        status.destroy();
+      },
+    });
+  }
+
   _spawnCoinPop(x, y) {
     const c = this.add.image(x, y, "spr_coin").setDisplaySize(this.tile * 0.45, this.tile * 0.45);
     c.setDepth(600);
@@ -529,6 +874,7 @@ export class GameScene extends Phaser.Scene {
     // ★ここで「クリア済み」を保存
     const firstClear = this._saveClearToSlot(this.courseKey);
     const storyId = this._resolvePostClearStory(firstClear);
+    const shouldShowEndingCredits = this._shouldShowEndingCredits();
 
     const msg = this.add
       .text(this.cameras.main.scrollX + this.scale.width / 2, 140, "CLEAR!", {
@@ -543,14 +889,22 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(900, () => {
       msg.destroy();
       if (storyId) {
+        const isEnding = storyId === "ending";
         this.scene.start("StoryScene", {
           storyId,
-          nextScene: this.returnTo,
-          nextData: {
-            selectedIndex: this.selectedIndex,
-            selectedCourseKey: this.courseKey,
-          },
+          nextScene: isEnding ? "EndingScene" : this.returnTo,
+          nextData: isEnding
+            ? {}
+            : {
+                selectedIndex: this.selectedIndex,
+                selectedCourseKey: this.courseKey,
+              },
         });
+        return;
+      }
+
+      if (shouldShowEndingCredits) {
+        this.scene.start("EndingScene");
         return;
       }
 
@@ -659,5 +1013,14 @@ export class GameScene extends Phaser.Scene {
 
     const storyId = `clear_${this.courseKey}`;
     return save.story?.interludes?.[this.courseKey] ? null : storyId;
+  }
+
+  _shouldShowEndingCredits() {
+    if (this.courseKey !== "castle") return false;
+
+    const save = normalizeSave(this.registry.get("save"));
+    const cleared = new Set(save.clearedStages ?? []);
+
+    return Object.keys(COURSES).every((key) => cleared.has(key));
   }
 }
